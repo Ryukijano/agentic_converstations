@@ -1,0 +1,194 @@
+# Metadata Schema for Agentic Conversations
+# Version: 1.0
+# Last Updated: 2026-07-25
+
+# This schema defines the standard metadata format for conversation transcripts
+# in the agentic_converstations repository.
+
+conversation_metadata:
+  # Required fields
+  title:
+    type: string
+    required: true
+    description: "Descriptive title for the conversation"
+    example: "Debug CUDA Memory Error in Multi-GPU Training"
+    
+  tools:
+    type: array
+    required: true
+    description: "List of AI agent tools used in conversation"
+    allowed_values:
+      - "Cursor"
+      - "Cascade"
+      - "Devin"
+      - "Claude Sonnet 4.5"
+      - "Claude Opus 4"
+      - "GPT-5"
+      - "Pieces LTM"
+      - "GitHub Copilot"
+      - "Custom Agent"
+    example: ["Cursor", "Claude Sonnet 4.5"]
+    
+  topics:
+    type: array
+    required: true
+    description: "High-level topic tags for categorization"
+    suggested_values:
+      - "debugging"
+      - "deployment"
+      - "optimization"
+      - "training"
+      - "architecture-design"
+      - "infrastructure"
+      - "model-serving"
+      - "data-processing"
+      - "testing"
+      - "refactoring"
+      - "documentation"
+      - "research"
+    min_items: 1
+    max_items: 5
+    example: ["debugging", "pytorch", "multi-gpu"]
+    
+  outcome:
+    type: enum
+    required: true
+    allowed_values:
+      - "success"      # Problem solved completely
+      - "partial"      # Made progress but not complete
+      - "blocked"      # Hit blocker, could not proceed
+      - "learning"     # Exploratory, educational outcome
+    description: "Final outcome status of the conversation"
+    example: "success"
+    
+  # Optional but recommended fields
+  date:
+    type: string
+    required: false
+    format: "YYYY-MM-DD"
+    description: "Date when conversation took place"
+    example: "2026-07-15"
+    
+  author:
+    type: string
+    required: false
+    description: "GitHub username or author identifier"
+    example: "Ryukijano"
+    
+  technologies:
+    type: array
+    required: false
+    description: "Specific frameworks, libraries, or platforms used"
+    example: ["PyTorch", "CUDA", "Docker", "FastAPI"]
+    
+  hardware:
+    type: array
+    required: false
+    description: "Computing platforms or hardware used"
+    example: ["A100", "DGX", "Jetson AGX Orin"]
+    
+  duration:
+    type: string
+    required: false
+    description: "Approximate conversation duration (human-friendly)"
+    example: "2 hours"
+    
+  key_insights:
+    type: array
+    required: false
+    description: "Main takeaways or lessons learned"
+    item_type: string
+    example:
+      - "Gradient accumulation requires explicit zero_grad() calls"
+      - "Use gradient checkpointing for memory-constrained training"
+      
+  # Extended metadata (optional)
+  related_conversations:
+    type: array
+    required: false
+    description: "Links to related conversation files"
+    example: ["conversations/debugging/cuda-oom-previous.md"]
+    
+  repository:
+    type: string
+    required: false
+    description: "GitHub repository context (if applicable)"
+    example: "Ryukijano/cosmos-framework"
+    
+  external_resources:
+    type: array
+    required: false
+    description: "External documentation or references cited"
+    item_type: object
+    fields:
+      - url: string
+      - title: string
+    example:
+      - url: "https://pytorch.org/docs/stable/notes/ddp.html"
+        title: "PyTorch DDP Documentation"
+
+# Domain-specific tag vocabularies
+
+quantum_computing_topics:
+  - "quantum-circuits"
+  - "quantum-error-correction"
+  - "qpu-access"
+  - "quantum-simulation"
+  - "vqe"
+  - "qaoa"
+  - "quantum-chemistry"
+  - "qml"
+  - "quantum-optimization"
+  
+computer_vision_topics:
+  - "object-detection"
+  - "segmentation"
+  - "3d-reconstruction"
+  - "video-understanding"
+  - "depth-estimation"
+  - "medical-imaging"
+  - "autonomous-driving"
+  - "pose-estimation"
+  - "tracking"
+  
+robotics_topics:
+  - "motion-planning"
+  - "control-systems"
+  - "sim-to-real"
+  - "manipulation"
+  - "navigation"
+  - "world-models"
+  - "embodied-ai"
+  - "humanoid-robotics"
+  
+infrastructure_topics:
+  - "slurm"
+  - "kubernetes"
+  - "docker"
+  - "ci-cd"
+  - "monitoring"
+  - "distributed-training"
+  - "model-serving"
+  - "gpu-cluster"
+
+# Example complete metadata block:
+
+example:
+  title: "Debug CUDA Out-of-Memory in Multi-GPU Training"
+  date: "2026-07-15"
+  author: "Ryukijano"
+  tools: ["Cursor", "Claude Sonnet 4.5"]
+  topics: ["debugging", "pytorch", "multi-gpu", "memory-optimization"]
+  technologies: ["PyTorch", "CUDA", "DDP", "NCCL"]
+  hardware: ["A100", "DGX"]
+  outcome: "success"
+  duration: "45 minutes"
+  key_insights:
+    - "Gradient accumulation needs explicit zero_grad() between steps"
+    - "Use gradient checkpointing for memory-intensive models"
+    - "Monitor CUDA memory fragmentation with torch.cuda.memory_stats()"
+  related_conversations:
+    - "conversations/infrastructure/dgx-setup.md"
+  external_resources:
+    - url: "https://pytorch.org/docs/stable/notes/ddp.html"
+      title: "PyTorch DDP Best Practices"
