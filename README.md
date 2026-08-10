@@ -25,7 +25,8 @@ agentic_converstations/
 │   ├── infrastructure-devops/   # Cluster setup, SLURM, deployment
 │   └── general-development/     # Tools, workflows, integrations
 ├── learning-plans/              # Structured learning plans with AI agent guidance
-│   └── cuda-blackwell-labs/     # 10-project CUDA mastery plan for GB10 DGX Spark
+│   ├── cuda-blackwell-labs/     # 10-project CUDA mastery plan for GB10 DGX Spark
+│   └── mcp-tools/               # Custom MCP servers for DGX Spark monitoring and profiling
 ├── templates/                   # Conversation export templates
 ├── metadata/                    # Structured metadata for conversations
 ├── INDEX.md                     # Full conversation catalog
