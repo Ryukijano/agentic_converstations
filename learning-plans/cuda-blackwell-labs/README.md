@@ -9,6 +9,7 @@ A 10-project learning plan to master the NVIDIA Blackwell architecture and CUDA 
 | [CUDA_LEVEL_ASSESSMENT.md](CUDA_LEVEL_ASSESSMENT.md) | Honest assessment of current CUDA knowledge and gaps |
 | [MASTERPLAN.md](MASTERPLAN.md) | Full 10-project plan with phases, resources, and progress tracking |
 | [AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md) | How to use AI coding agents effectively for CUDA learning |
+| [NVIDIA_AGENTIC_SKILLS_ANALYSIS.md](NVIDIA_AGENTIC_SKILLS_ANALYSIS.md) | How NVIDIA builds, verifies, and distributes agent skills |
 | [tasks/](tasks/) | Individual task files for each of the 10 projects |
 
 ## Quick Start
