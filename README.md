@@ -12,6 +12,7 @@ This repository archives production agentic conversations from **Ryukijano**'s m
 - **Computer Vision**: 3D endoscopy reconstruction, surgical scene understanding, object detection (RF-DETR), video prediction
 - **Robotics & Embodied AI**: NVIDIA GR00T/Cosmos integration, whole-body humanoid control, physical AI world models
 - **Infrastructure**: SLURM/DGX cluster management, multi-node training, model deployment at scale
+- **CUDA & GPU Computing**: Blackwell architecture mastery, CUDA stack learning plan, GB10 DGX Spark optimization
 
 ## Repository Structure
 
@@ -23,11 +24,23 @@ agentic_converstations/
 │   ├── robotics-embodied-ai/    # GR00T, Cosmos, humanoid control
 │   ├── infrastructure-devops/   # Cluster setup, SLURM, deployment
 │   └── general-development/     # Tools, workflows, integrations
+├── learning-plans/              # Structured learning plans with AI agent guidance
+│   └── cuda-blackwell-labs/     # 10-project CUDA mastery plan for GB10 DGX Spark
 ├── templates/                   # Conversation export templates
 ├── metadata/                    # Structured metadata for conversations
 ├── INDEX.md                     # Full conversation catalog
 └── CONTRIBUTING.md              # How to add conversations
 ```
+
+## Learning Plans
+
+### CUDA Blackwell Labs
+A 10-project learning plan to master the NVIDIA Blackwell architecture and CUDA software stack on a DGX Spark (GB10 Grace Blackwell), using AI coding agents as development partners.
+
+- **[Assessment](learning-plans/cuda-blackwell-labs/CUDA_LEVEL_ASSESSMENT.md)** — Honest evaluation of current CUDA knowledge and gaps
+- **[Masterplan](learning-plans/cuda-blackwell-labs/MASTERPLAN.md)** — Full 10-project plan with phases, online resources, and progress tracking
+- **[AI Agent Guide](learning-plans/cuda-blackwell-labs/AI_AGENT_GUIDE.md)** — How to use Cursor, Devin, and Claude effectively for CUDA learning
+- **[Task Files](learning-plans/cuda-blackwell-labs/tasks/)** — Individual task specifications for all 10 projects
 
 ## Conversation Format
 

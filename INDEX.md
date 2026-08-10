@@ -9,6 +9,7 @@ A searchable catalog of all agentic conversation transcripts with metadata.
 - [Robotics & Embodied AI](#robotics--embodied-ai) (3 conversations)
 - [Infrastructure & DevOps](#infrastructure--devops) (2 conversations)
 - [General Development](#general-development) (6 conversations)
+- [Learning Plans](#learning-plans) (1 plan, 10 projects)
 
 ---
 
@@ -306,4 +307,36 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full metadata guidelines.
 
 ---
 
-_Last updated: 2026-07-25_
+## Learning Plans
+
+Structured learning plans that use AI coding agents as development partners.
+
+### CUDA Blackwell Labs — GB10 DGX Spark Mastery
+
+A 10-project plan to go from advanced-beginner CUDA to genuine Blackwell architecture and CUDA stack mastery.
+
+| Document | Description |
+|----------|-------------|
+| [CUDA Level Assessment](learning-plans/cuda-blackwell-labs/CUDA_LEVEL_ASSESSMENT.md) | Honest evaluation of current CUDA knowledge and gaps |
+| [Masterplan](learning-plans/cuda-blackwell-labs/MASTERPLAN.md) | Full 10-project plan with phases, online resources, and progress tracking |
+| [AI Agent Guide](learning-plans/cuda-blackwell-labs/AI_AGENT_GUIDE.md) | How to use Cursor, Devin, and Claude effectively for CUDA learning |
+| [README](learning-plans/cuda-blackwell-labs/README.md) | Overview and quick start guide |
+
+#### Project Tasks
+
+| # | Project | Phase | Task File |
+|---|---------|-------|-----------|
+| 1 | GB10 Hardware Probe | 1 | [task](learning-plans/cuda-blackwell-labs/tasks/01_gb10_hardware_probe.md) |
+| 2 | Memory Bandwidth & Latency Lab | 1 | [task](learning-plans/cuda-blackwell-labs/tasks/02_memory_bandwidth.md) |
+| 3 | CUDA → PTX → SASS Pipeline | 1 | [task](learning-plans/cuda-blackwell-labs/tasks/03_ptx_sass.md) |
+| 4 | Occupancy & Stall Experiments | 2 | [task](learning-plans/cuda-blackwell-labs/tasks/04_occupancy_stalls.md) |
+| 5 | Five-Way GEMM Comparison | 2 | [task](learning-plans/cuda-blackwell-labs/tasks/05_gemm_comparison.md) |
+| 6 | Precision Lab (FP32→FP4) | 2 | [task](learning-plans/cuda-blackwell-labs/tasks/06_precision_lab.md) |
+| 7 | Streams, Events, Async Allocation | 3 | [task](learning-plans/cuda-blackwell-labs/tasks/07_streams_events.md) |
+| 8 | CUDA Graphs | 3 | [task](learning-plans/cuda-blackwell-labs/tasks/08_cuda_graphs.md) |
+| 9 | NVDEC Video Pipeline | 3 | [task](learning-plans/cuda-blackwell-labs/tasks/09_nvdec_pipeline.md) |
+| 10 | Custom Endosight CUDA Kernel | 4 | [task](learning-plans/cuda-blackwell-labs/tasks/10_endosight_kernel.md) |
+
+---
+
+_Last updated: 2026-08-10_
