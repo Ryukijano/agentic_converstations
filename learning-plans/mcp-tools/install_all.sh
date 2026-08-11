@@ -18,6 +18,9 @@ SERVERS["dgx-monitor"]="${SERVERS_DIR}/dgx_monitor/server.py"
 SERVERS["cuda-profiling"]="${SERVERS_DIR}/cuda_profiling/server.py"
 SERVERS["endosight-pipeline"]="${SERVERS_DIR}/endosight_pipeline/server.py"
 SERVERS["research-workflow"]="${SERVERS_DIR}/research_workflow/server.py"
+SERVERS["distributed-training"]="${SERVERS_DIR}/distributed_training/server.py"
+SERVERS["cloud-gpu-ssh"]="${SERVERS_DIR}/cloud_gpu_ssh/server.py"
+SERVERS["tpu-jax"]="${SERVERS_DIR}/tpu_jax/server.py"
 
 # Define agent config files
 declare -A CONFIGS
