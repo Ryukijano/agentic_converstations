@@ -14,11 +14,22 @@ import json
 import subprocess
 import socket
 import re
+import time
+import glob
+import tempfile
 from typing import Annotated
 
 from mcp.server import MCPServer
 
 server = MCPServer("distributed-training", "1.0.0")
+
+# Use the interpreter that is running this server for all PyTorch / subprocess checks.
+# Can be overridden via MCP_PYTHON_BIN if the server is launched from a non-target env.
+PYTHON = os.environ.get("MCP_PYTHON_BIN", sys.executable)
+
+MAX_CHECKPOINT_RESULTS = 50
+DEFAULT_CHECKPOINT_PATTERNS = ["*.pt", "*.safetensors", "*.ckpt", "*.bin", "*.pth"]
+DEFAULT_CHECKPOINT_DEPTH = 2
 
 
 def _run(cmd: list[str], timeout: int = 60, env: dict | None = None) -> dict:
@@ -34,6 +45,35 @@ def _run(cmd: list[str], timeout: int = 60, env: dict | None = None) -> dict:
         return {"returncode": -1, "stdout": "", "stderr": f"Not found: {cmd[0]}"}
     except Exception as e:
         return {"returncode": -1, "stdout": "", "stderr": str(e)}
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def _visible_gpu_count() -> int:
+    """Count visible GPUs using nvidia-smi."""
+    r = _run(["nvidia-smi", "-L"])
+    if r["returncode"] != 0:
+        return 0
+    return len(
+        [l for l in r["stdout"].splitlines() if re.match(r"GPU\s*\d+:", l.strip())]
+    )
+
+
+def _find_free_port(preferred_start: int = 29500, max_tries: int = 10) -> int:
+    """Find an available localhost TCP port, trying a few preferred ports first."""
+    for port in range(preferred_start, preferred_start + max_tries):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("localhost", port))
+                return port
+            except OSError:
+                continue
+    # Fallback to an OS-assigned port.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))
+        return s.getsockname()[1]
 
 
 # --- Multi-GPU Discovery ---
@@ -64,24 +104,78 @@ def gpu_interconnect() -> str:
     r = _run(["nvidia-smi", "topo", "-m"])
     if r["returncode"] != 0:
         return f"Error: {r['stderr']}"
-    # Parse topology matrix
-    lines = r["stdout"].split("\n")
-    results = ["GPU Interconnect Topology:"]
+
+    raw = _strip_ansi(r["stdout"])
+    lines = raw.splitlines()
+
+    # Parse the actual connection matrix, not the legend.
+    header: list[str] | None = None
+    rows: list[list[str]] = []
     for line in lines:
-        results.append(line)
-    # Check for NVLink
-    has_nvlink = "NV" in r["stdout"]
-    results.append(f"\nNVLink detected: {has_nvlink}")
+        if "Legend" in line:
+            break
+        parts = [p.strip() for p in line.split("\t") if p.strip() != ""]
+        if not parts:
+            continue
+        # The header is the first line whose first token is GPU0. Subsequent
+        # lines that start with a GPU label are data rows.
+        if header is None and re.match(r"^GPU0$", parts[0]):
+            header = parts
+            continue
+        if header is not None and re.match(r"^GPU\d+$", parts[0]):
+            rows.append(parts)
+
+    if not header:
+        return "GPU Interconnect Topology:\n" + raw
+
+    gpu_labels = [h for h in header if re.match(r"^GPU\d+$", h)]
+    n = len(gpu_labels)
+    if n < 2:
+        return "GPU Interconnect link summary (1 GPU): no inter-GPU links to report."
+
+
+    summary = [f"GPU Interconnect link summary ({n} GPUs):"]
+    link_counts: dict[str, int] = {}
+    for row in rows:
+        label = row[0]
+        m = re.match(r"GPU(\d+)", label)
+        if not m:
+            continue
+        i = int(m.group(1))
+        entries = row[1 : 1 + n]
+        for j in range(i + 1, n):
+            if j >= len(entries):
+                continue
+            token = entries[j].strip()
+            if token == "X" or not token:
+                continue
+            if re.match(r"^NV\d+$", token):
+                link = token
+            else:
+                link = f"PCIe ({token})"
+            pair = f"GPU{i} <-> GPU{j}"
+            summary.append(f"  {pair}: {link}")
+            link_counts[link] = link_counts.get(link, 0) + 1
+
+    summary.append("\nLink type counts:")
+    if not link_counts:
+        summary.append("  No inter-GPU links found.")
+    else:
+        for link, count in sorted(link_counts.items(), key=lambda x: x[1], reverse=True):
+            summary.append(f"  {link}: {count} pair(s)")
+
+    has_nvlink = any(k.startswith("NV") for k in link_counts)
     if not has_nvlink:
-        results.append("WARNING: No NVLink detected. Multi-GPU all-reduce will use PCIe (slower).")
-    return "\n".join(results)
+        summary.append("\nWARNING: No NVLink detected. Multi-GPU all-reduce will use PCIe (slower).")
+
+    return "\n".join(summary)
 
 
 @server.tool()
 def cuda_visible_devices() -> str:
     """Show current CUDA_VISIBLE_DEVICES setting and how many GPUs are visible to CUDA."""
     env_val = os.environ.get("CUDA_VISIBLE_DEVICES", "not set (all GPUs visible)")
-    r = _run(["python3", "-c", "import torch; print(f'PyTorch sees {torch.cuda.device_count()} GPU(s)')"])
+    r = _run([PYTHON, "-c", "import torch; print(f'PyTorch sees {torch.cuda.device_count()} GPU(s)')"])
     torch_info = r["stdout"] if r["returncode"] == 0 else f"PyTorch check failed: {r['stderr']}"
     return f"CUDA_VISIBLE_DEVICES: {env_val}\n{torch_info}"
 
@@ -181,10 +275,11 @@ if dist.is_initialized():
     print(f"  Rank: {dist.get_rank()}")
 # Check NCCL
 try:
-    import torch_c_nccl
-    print(f"NCCL backend: available")
-except:
-    print(f"NCCL backend: {dist.is_nccl_available() if hasattr(dist, 'is_nccl_available') else 'check manually'}")
+    nccl_ver = torch.cuda.nccl.version()
+    print(f"NCCL version: {nccl_ver}")
+except Exception as e:
+    print(f"NCCL version: not available ({e})")
+print(f"NCCL backend available: {dist.is_nccl_available()}")
 # Check FSDP
 try:
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -198,7 +293,7 @@ try:
 except ImportError:
     print("DDP: not available")
 """
-    r = _run(["python3", "-c", code])
+    r = _run([PYTHON, "-c", code], timeout=30)
     if r["returncode"] != 0:
         return f"Error: {r['stderr']}"
     return r["stdout"]
@@ -212,31 +307,139 @@ def check_ddp_setup(
     """Verify DDP (DistributedDataParallel) can be initialized with the given parameters.
     Runs a quick test to check if the backend and process group work.
     """
-    code = f"""
+    backend = backend.lower().strip()
+    if backend not in {"nccl", "gloo", "mpi"}:
+        return f"Unsupported backend: {backend}"
+
+    visible_gpus = _visible_gpu_count()
+    if backend == "nccl" and visible_gpus == 0:
+        return "DDP NCCL test failed: no GPUs visible."
+    if backend == "nccl" and world_size > visible_gpus:
+        return f"DDP NCCL test failed: world_size ({world_size}) exceeds visible GPU count ({visible_gpus})."
+
+    port = _find_free_port()
+
+    script = f"""
 import os
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-def test_ddp(rank, world_size):
+
+def test_ddp(rank, world_size, backend, port):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '29500'
-    dist.init_process_group(backend='{backend}', rank=rank, world_size=world_size)
-    if torch.cuda.is_available():
+    os.environ['MASTER_PORT'] = str(port)
+    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+    if torch.cuda.is_available() and backend == 'nccl' and rank < torch.cuda.device_count():
         torch.cuda.set_device(rank)
-    model = torch.nn.Linear(10, 10).cuda() if torch.cuda.is_available() else torch.nn.Linear(10, 10)
-    ddp = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank] if torch.cuda.is_available() else None)
-    print(f"Rank {{rank}}: DDP initialized successfully with {{backend}} backend, world_size={{world_size}}")
+
+    model = torch.nn.Linear(10, 10)
+    if torch.cuda.is_available() and backend == 'nccl':
+        dev_id = rank % max(1, torch.cuda.device_count())
+        model = model.cuda(dev_id)
+        ddp = torch.nn.parallel.DistributedDataParallel(model, device_ids=[dev_id], output_device=dev_id)
+    else:
+        ddp = torch.nn.parallel.DistributedDataParallel(model)
+
+    x = torch.randn(4, 10)
+    if torch.cuda.is_available() and backend == 'nccl':
+        dev_id = rank % max(1, torch.cuda.device_count())
+        x = x.cuda(dev_id)
+    y = ddp(x)
+    y.sum().backward()
+
     dist.destroy_process_group()
+    print(f"Rank {{rank}}: DDP initialized and ran one step with {{backend}} backend, world_size={{world_size}}")
+
 
 if __name__ == '__main__':
-    mp.spawn(test_ddp, args=({world_size},), nprocs={world_size}, join=True)
+    mp.spawn(test_ddp, args=({world_size}, "{backend}", {port}), nprocs={world_size}, join=True)
     print("DDP test passed.")
 """
-    r = _run(["python3", "-c", code], timeout=30)
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+        f.write(script)
+        tmp_path = f.name
+
+    try:
+        r = _run([PYTHON, tmp_path], timeout=60)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
     if r["returncode"] != 0:
-        return f"DDP test failed:\n{r['stderr']}"
+        return f"DDP test failed:\n{r['stderr']}\n{r['stdout']}".strip()
     return r["stdout"] or "DDP test passed (no output)"
+
+
+@server.tool()
+def check_fsdp_setup(
+    world_size: Annotated[int, "Number of processes/GPUs"] = 1,
+    backend: Annotated[str, "Communication backend: nccl, gloo"] = "gloo",
+) -> str:
+    """Check that torch.distributed.fsdp.FullyShardedDataParallel can wrap a small model."""
+    backend = backend.lower().strip()
+    if backend not in {"nccl", "gloo"}:
+        return f"FSDP only supports nccl or gloo, got {backend}"
+
+    visible_gpus = _visible_gpu_count()
+    if backend == "nccl" and visible_gpus == 0:
+        return "FSDP NCCL test failed: no GPUs visible."
+    if backend == "nccl" and world_size > visible_gpus:
+        return f"FSDP NCCL test failed: world_size ({world_size}) exceeds visible GPU count ({visible_gpus})."
+
+    port = _find_free_port()
+
+    script = f"""
+import os
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+
+def test_fsdp(rank, world_size, backend, port):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = str(port)
+    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+    if torch.cuda.is_available() and backend == 'nccl' and rank < torch.cuda.device_count():
+        torch.cuda.set_device(rank)
+
+    dev_id = rank % max(1, torch.cuda.device_count())
+    device = torch.device(f"cuda:{{dev_id}}" if torch.cuda.is_available() and backend == 'nccl' else "cpu")
+    model = torch.nn.Linear(10, 10).to(device)
+    fsdp_model = FSDP(model)
+
+    x = torch.randn(4, 10).to(device)
+    out = fsdp_model(x)
+    out.sum().backward()
+
+    dist.destroy_process_group()
+    print(f"Rank {{rank}}: FSDP wrapper check passed with {{backend}} backend, world_size={{world_size}}")
+
+
+if __name__ == '__main__':
+    mp.spawn(test_fsdp, args=({world_size}, "{backend}", {port}), nprocs={world_size}, join=True)
+    print("FSDP test passed.")
+"""
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+        f.write(script)
+        tmp_path = f.name
+
+    try:
+        r = _run([PYTHON, tmp_path], timeout=60)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    if r["returncode"] != 0:
+        return f"FSDP test failed:\n{r['stderr']}\n{r['stdout']}".strip()
+    return r["stdout"] or "FSDP test passed (no output)"
 
 
 # --- Training Job Management ---
@@ -247,40 +450,82 @@ def training_jobs() -> str:
     r = _run(["ps", "aux"])
     if r["returncode"] != 0:
         return f"Error: {r['stderr']}"
-    keywords = ["torchrun", "torch.distributed", "accelerate", "deepspeed", "mpirun", "python.*train", "python.*finetune"]
-    results = ["Running training processes:"]
+    keywords = [
+        "torchrun",
+        r"torch\.distributed",
+        "accelerate",
+        "deepspeed",
+        "mpirun",
+        "python.*train",
+        "python.*finetune",
+    ]
+    exclude = ["mcp_servers/servers", "server.py"]
+    matches: set[str] = set()
     for line in r["stdout"].split("\n"):
+        if not line.strip():
+            continue
+        # Skip the MCP server itself and other server utilities.
+        if any(ex in line for ex in exclude):
+            continue
         for kw in keywords:
             if re.search(kw, line, re.IGNORECASE):
                 # Trim long lines
-                results.append(f"  {line[:200]}")
+                matches.add(line[:200])
                 break
-    if len(results) == 1:
-        results.append("  No training processes found.")
-    return "\n".join(results)
+    if not matches:
+        return "Running training processes:\n  No training processes found."
+    sorted_matches = sorted(matches)
+    return "Running training processes:\n" + "\n".join(f"  {m}" for m in sorted_matches)
 
 
 @server.tool()
 def kill_training_job(
     pid: Annotated[int, "PID of the training process to kill"],
-    graceful: Annotated[bool, "Send SIGTERM first, then SIGKILL after 5s"] = True,
+    force: Annotated[bool, "Confirm the kill; required unless dry_run is true"] = False,
+    graceful: Annotated[bool, "Send SIGTERM first, then SIGKILL if still alive"] = True,
+    dry_run: Annotated[bool, "Show what would be killed without killing"] = False,
 ) -> str:
     """Kill a training process. Use training_jobs first to find the PID."""
+    if pid <= 0:
+        return f"Invalid PID: {pid}"
+    if pid == os.getpid():
+        return f"Refusing to kill the MCP server process (PID {pid})."
+
+    # Validate the PID exists and get a friendly description.
+    check = _run(["kill", "-0", str(pid)])
+    if check["returncode"] != 0:
+        return f"PID {pid} is not running or cannot be signalled."
+
+    r = _run(["ps", "-p", str(pid), "-o", "pid,args", "--no-headers"])
+    if r["returncode"] == 0 and r["stdout"].strip():
+        target = r["stdout"].strip()
+    else:
+        target = f"PID {pid}"
+
+    if dry_run:
+        return f"Dry run: would kill {target}"
+
+    if not force:
+        return (
+            f"Safety interlock: set force=true to kill {target}. "
+            "Use dry_run=true to preview first."
+        )
+
     if graceful:
         _run(["kill", "-15", str(pid)])  # SIGTERM
-        import time
-        time.sleep(5)
-        # Check if still alive
-        check = _run(["kill", "-0", str(pid)])
-        if check["returncode"] == 0:
-            _run(["kill", "-9", str(pid)])  # SIGKILL
-            return f"Sent SIGTERM then SIGKILL to PID {pid}"
-        return f"Sent SIGTERM to PID {pid}, process exited gracefully."
+        # Poll briefly; no long blocking sleep.
+        for _ in range(10):
+            time.sleep(0.2)
+            alive = _run(["kill", "-0", str(pid)])
+            if alive["returncode"] != 0:
+                return f"Sent SIGTERM to {target}; process exited gracefully."
+        _run(["kill", "-9", str(pid)])  # SIGKILL
+        return f"Sent SIGTERM then SIGKILL to {target}."
     else:
         r = _run(["kill", "-9", str(pid)])
         if r["returncode"] == 0:
-            return f"Sent SIGKILL to PID {pid}"
-        return f"Failed to kill PID {pid}: {r['stderr']}"
+            return f"Sent SIGKILL to {target}."
+        return f"Failed to kill {target}: {r['stderr']}"
 
 
 # --- Checkpoint Management ---
@@ -288,25 +533,58 @@ def kill_training_job(
 @server.tool()
 def list_checkpoints(
     directory: Annotated[str, "Directory to search for checkpoints"] = "/home/aimsgroupuol",
-    pattern: Annotated[str, "File pattern to match (default: *.pt, *.safetensors, *.ckpt)"] = "*.pt",
+    pattern: Annotated[
+        str,
+        "File pattern(s) to match, comma-separated (default: *.pt,*.safetensors,*.ckpt,*.bin,*.pth)",
+    ] = ", ".join(DEFAULT_CHECKPOINT_PATTERNS),
+    max_depth: Annotated[int, "Maximum directory depth to search"] = DEFAULT_CHECKPOINT_DEPTH,
 ) -> str:
-    """Find checkpoint files in a directory. Searches for .pt, .safetensors, .ckpt files."""
+    """Find checkpoint files in a directory. Searches for .pt, .safetensors, .ckpt, .bin, .pth files
+    up to a limited recursion depth and returns at most 50 results.
+    """
     import glob
-    patterns = [pattern, "*.safetensors", "*.ckpt", "*.bin", "*.pth"]
+
+    directory = os.path.expanduser(directory)
+    if not os.path.isdir(directory):
+        return f"Directory not found: {directory}"
+
+    # Respect the pattern argument; empty string falls back to defaults.
+    if pattern and pattern.strip():
+        patterns = [p.strip() for p in pattern.split(",") if p.strip()]
+    else:
+        patterns = list(DEFAULT_CHECKPOINT_PATTERNS)
+
+    # Limit search depth by constructing glob patterns for each level.
+    found: set[str] = set()
+    for pat in patterns:
+        for depth in range(max_depth + 1):
+            parts = [directory] + ["*"] * depth + [pat]
+            found.update(glob.glob(os.path.join(*parts)))
+            if len(found) >= MAX_CHECKPOINT_RESULTS:
+                break
+        if len(found) >= MAX_CHECKPOINT_RESULTS:
+            break
+
+    if not found:
+        return f"No checkpoint files found in {directory} (patterns: {', '.join(patterns)})"
+
     results = []
-    for p in patterns:
-        found = glob.glob(os.path.join(directory, "**", p), recursive=True)
-        for f in found[:20]:  # Limit per pattern
+    for f in found:
+        try:
             size_gb = os.path.getsize(f) / (1024 ** 3)
             results.append((f, size_gb))
-    if not results:
-        return f"No checkpoint files found in {directory}"
+        except OSError:
+            continue
+
     results.sort(key=lambda x: x[1], reverse=True)
-    output = [f"Checkpoints in {directory} ({len(results)} found, sorted by size):"]
-    for path, size in results[:30]:
+    output = [
+        f"Checkpoints in {directory} (patterns: {', '.join(patterns)}; "
+        f"{len(results)} found, top {min(MAX_CHECKPOINT_RESULTS, len(results))} by size):"
+    ]
+    for path, size in results[:MAX_CHECKPOINT_RESULTS]:
         output.append(f"  {size:.2f} GB  {path}")
-    if len(results) > 30:
-        output.append(f"  ... and {len(results) - 30} more")
+    if len(results) > MAX_CHECKPOINT_RESULTS:
+        output.append(f"  ... and {len(results) - MAX_CHECKPOINT_RESULTS} more")
     return "\n".join(output)
 
 
@@ -349,6 +627,7 @@ TOOLS = {
     "check_nccl_env": check_nccl_env,
     "torch_distributed_info": torch_distributed_info,
     "check_ddp_setup": check_ddp_setup,
+    "check_fsdp_setup": check_fsdp_setup,
     "training_jobs": training_jobs,
     "kill_training_job": kill_training_job,
     "list_checkpoints": list_checkpoints,
