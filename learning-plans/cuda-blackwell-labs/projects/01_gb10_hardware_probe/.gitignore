@@ -1,0 +1,6 @@
+# Build artifacts
+probe
+probe.ptx
+
+# Generated results (run `make run` to regenerate)
+results/probe_output.txt
