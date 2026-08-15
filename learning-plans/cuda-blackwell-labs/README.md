@@ -25,7 +25,7 @@ A 10-project learning plan to master the NVIDIA Blackwell architecture and CUDA 
 | # | Project | Phase | Status |
 |---|---------|-------|--------|
 | 1 | [GB10 Hardware Probe](tasks/01_gb10_hardware_probe.md) | 1 | Completed — [projects/01_gb10_hardware_probe](projects/01_gb10_hardware_probe) |
-| 2 | [Memory Bandwidth & Latency Lab](tasks/02_memory_bandwidth.md) | 1 | Pending |
+| 2 | [Memory Bandwidth & Latency Lab](tasks/02_memory_bandwidth.md) | 1 | Completed — [projects/02_memory_bandwidth](projects/02_memory_bandwidth) |
 | 3 | [CUDA → PTX → SASS Pipeline](tasks/03_ptx_sass.md) | 1 | Pending |
 | 4 | [Occupancy & Stall Experiments](tasks/04_occupancy_stalls.md) | 2 | Pending |
 | 5 | [Five-Way GEMM Comparison](tasks/05_gemm_comparison.md) | 2 | Pending |
