@@ -1,0 +1,3 @@
+bandwidth_test
+results/*.txt
+results/*.log
